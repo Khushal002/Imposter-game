@@ -137,7 +137,8 @@ if st.button("Create New Room"):
         "started": False,
         "ended": False,
         "votes": {},
-        "winner": ""
+        "winner": "",
+        "last_result": ""
     }
 
     save_rooms(rooms)
@@ -199,295 +200,268 @@ if st.session_state.joined:
 
     player_name = st.session_state.current_player
 
+    room = rooms[room_code]
+
+    # ---------------- KICKED PLAYER CHECK ----------------
+    if player_name not in room["players"]:
+
+        st.error("You were kicked from the game.")
+
+        st.session_state.joined = False
+
+        st.stop()
+
     # ---------------- SHOW PLAYERS ----------------
-    if room_code in rooms:
+    st.subheader("Players")
 
-        st.subheader("Players")
+    for player in room["players"]:
 
-        for player in rooms[room_code]["players"]:
-
-            st.write(f"✅ {player}")
+        st.write(f"✅ {player}")
 
     # ---------------- START GAME ----------------
-    if room_code in rooms:
+    if len(room["players"]) >= 3:
 
-        players = rooms[room_code]["players"]
+        if not room["started"] and not room["ended"]:
 
-        if len(players) >= 3:
+            if st.button("Start Game"):
 
-            if not rooms[room_code]["started"]:
+                assignments, imposter = (
+                    assign_words(room["players"])
+                )
 
-                if st.button("Start Game"):
+                room["assignments"] = assignments
 
-                    assignments, imposter = (
-                        assign_words(players)
-                    )
+                room["imposter"] = imposter
 
-                    rooms[room_code]["assignments"] = (
-                        assignments
-                    )
+                room["started"] = True
 
-                    rooms[room_code]["imposter"] = (
-                        imposter
-                    )
+                room["ended"] = False
 
-                    rooms[room_code]["started"] = True
+                room["votes"] = {}
 
-                    rooms[room_code]["ended"] = False
+                room["winner"] = ""
 
-                    rooms[room_code]["votes"] = {}
+                room["last_result"] = ""
 
-                    rooms[room_code]["winner"] = ""
+                save_rooms(rooms)
 
-                    save_rooms(rooms)
+                st.success("Game Started!")
 
-                    st.success("Game Started!")
+    else:
+
+        st.warning("Need at least 3 players")
+
+    # ---------------- REVEAL WORD ----------------
+    if room["started"]:
+
+        st.divider()
+
+        st.subheader("Reveal Your Secret Word")
+
+        if st.button("Reveal My Word"):
+
+            secret_word = (
+                room["assignments"][player_name]
+            )
+
+            placeholder = st.empty()
+
+            placeholder.success(
+                f"Your word is: {secret_word}"
+            )
+
+            time.sleep(5)
+
+            placeholder.empty()
+
+            st.info("Word hidden again")
+
+    # ---------------- VOTING ----------------
+    if room["started"]:
+
+        st.divider()
+
+        st.subheader("Vote To Kick A Player")
+
+        alive_players = [
+            p for p in room["players"]
+            if p != player_name
+        ]
+
+        voted_player = st.selectbox(
+            "Who should be kicked?",
+            alive_players,
+            key="vote_box"
+        )
+
+        if player_name in room["votes"]:
+
+            st.success(
+                f"You voted against "
+                f"{room['votes'][player_name]}"
+            )
 
         else:
 
-            st.warning("Need at least 3 players")
-
-    # ---------------- REVEAL SECRET WORD ----------------
-    rooms = load_rooms()
-
-    if room_code in rooms:
-
-        if rooms[room_code]["started"]:
-
-            st.divider()
-
-            st.subheader("Reveal Your Secret Word")
-
-            if st.button("Reveal My Word"):
-
-                secret_word = (
-                    rooms[room_code]["assignments"][
-                        player_name
-                    ]
-                )
-
-                placeholder = st.empty()
-
-                placeholder.success(
-                    f"Your word is: {secret_word}"
-                )
-
-                time.sleep(5)
-
-                placeholder.empty()
-
-                st.info("Word hidden again")
-
-    # ---------------- VOTING SYSTEM ----------------
-    rooms = load_rooms()
-
-    if room_code in rooms:
-
-        if rooms[room_code]["started"]:
-
-            st.divider()
-
-            st.subheader("Vote To Kick A Player")
-
-            alive_players = [
-                p for p in rooms[room_code]["players"]
-                if p != player_name
-            ]
-
-            voted_player = st.selectbox(
-                "Who should be kicked?",
-                alive_players,
-                key="vote_box"
-            )
-
             if st.button("Submit Vote"):
 
-                rooms[room_code]["votes"][
+                room["votes"][
                     player_name
                 ] = voted_player
 
                 save_rooms(rooms)
 
                 st.success(
-                    f"You voted against {voted_player}"
+                    f"You voted against "
+                    f"{voted_player}"
                 )
 
-    # ---------------- SHOW VOTE COUNT ----------------
-    rooms = load_rooms()
+    # ---------------- VOTE COUNT ----------------
+    if room["started"]:
 
-    if room_code in rooms:
+        total_votes = len(room["votes"])
 
-        if rooms[room_code]["started"]:
+        total_players = len(room["players"])
 
-            total_votes = len(
-                rooms[room_code]["votes"]
-            )
-
-            total_players = len(
-                rooms[room_code]["players"]
-            )
-
-            st.info(
-                f"Votes: {total_votes}/{total_players}"
-            )
+        st.info(
+            f"Votes: {total_votes}/{total_players}"
+        )
 
     # ---------------- PROCESS VOTES ----------------
-    rooms = load_rooms()
+    if room["started"]:
 
-    if room_code in rooms:
+        total_votes = len(room["votes"])
 
-        if rooms[room_code]["started"]:
+        total_players = len(room["players"])
 
-            total_votes = len(
-                rooms[room_code]["votes"]
+        # everyone voted
+        if total_votes == total_players:
+
+            vote_count = {}
+
+            for voted_player in (
+                room["votes"].values()
+            ):
+
+                if voted_player not in vote_count:
+
+                    vote_count[voted_player] = 0
+
+                vote_count[voted_player] += 1
+
+            highest_votes = max(
+                vote_count.values()
             )
 
-            total_players = len(
-                rooms[room_code]["players"]
-            )
+            top_players = []
 
-            # everyone voted
-            if total_votes == total_players:
+            for player, count in (
+                vote_count.items()
+            ):
 
-                vote_count = {}
+                if count == highest_votes:
 
-                for vote in (
-                    rooms[room_code]["votes"].values()
-                ):
+                    top_players.append(player)
 
-                    if vote not in vote_count:
+            # ---------------- TIE ----------------
+            if len(top_players) > 1:
 
-                        vote_count[vote] = 0
-
-                    vote_count[vote] += 1
-
-                # highest voted player
-                kicked_player = max(
-                    vote_count,
-                    key=vote_count.get
-                )
-
-                st.divider()
-
-                st.warning(
-                    f"{kicked_player} was kicked out!"
-                )
-
-                # remove kicked player
-                rooms[room_code]["players"].remove(
-                    kicked_player
-                )
-
-                imposter = (
-                    rooms[room_code]["imposter"]
-                )
-
-                # reset votes
-                rooms[room_code]["votes"] = {}
-
-                # ---------------- PLAYERS WIN ----------------
-                if kicked_player == imposter:
-
-                    rooms[room_code]["started"] = False
-
-                    rooms[room_code]["ended"] = True
-
-                    rooms[room_code]["winner"] = (
-                        "Players"
-                    )
-
-                else:
-
-                    remaining_players = len(
-                        rooms[room_code]["players"]
-                    )
-
-                    # ---------------- IMPOSTER WINS ----------------
-                    if remaining_players <= 2:
-
-                        rooms[room_code]["started"] = False
-
-                        rooms[room_code]["ended"] = True
-
-                        rooms[room_code]["winner"] = (
-                            "Imposter"
-                        )
-
-                    else:
-
-                        st.info(
-                            "Next round begins!"
-                        )
-
-                save_rooms(rooms)
-
-    # ---------------- FINAL GAME RESULT ----------------
-    rooms = load_rooms()
-
-    if room_code in rooms:
-
-        if rooms[room_code]["ended"]:
-
-            st.divider()
-
-            winner = rooms[room_code]["winner"]
-
-            imposter = rooms[room_code]["imposter"]
-
-            if winner == "Players":
-
-                st.success(
-                    "Players Win!"
-                )
-
-                st.info(
-                    f"The imposter was: {imposter}"
+                room["last_result"] = (
+                    "Tie vote! Nobody was kicked."
                 )
 
             else:
 
-                st.error(
-                    "Imposter Wins!"
+                kicked_player = top_players[0]
+
+                room["last_result"] = (
+                    f"{kicked_player} was kicked out!"
                 )
 
-                st.info(
-                    f"The imposter was: {imposter}"
+                room["players"].remove(
+                    kicked_player
                 )
+
+                imposter = room["imposter"]
+
+                # ---------------- PLAYERS WIN ----------------
+                if kicked_player == imposter:
+
+                    room["started"] = False
+
+                    room["ended"] = True
+
+                    room["winner"] = "Players"
+
+                else:
+
+                    remaining_players = len(
+                        room["players"]
+                    )
+
+                    # ---------------- IMPOSTER WIN ----------------
+                    if remaining_players <= 2:
+
+                        room["started"] = False
+
+                        room["ended"] = True
+
+                        room["winner"] = "Imposter"
+
+            # reset votes
+            room["votes"] = {}
+
+            save_rooms(rooms)
+
+    # ---------------- ROUND RESULT ----------------
+    if room["last_result"] != "":
+
+        st.warning(room["last_result"])
+
+    # ---------------- FINAL RESULT ----------------
+    if room["ended"]:
+
+        st.divider()
+
+        if room["winner"] == "Players":
+
+            st.success("Players Win!")
+
+        else:
+
+            st.error("Imposter Wins!")
+
+        st.info(
+            f"The imposter was: "
+            f"{room['imposter']}"
+        )
 
     # ---------------- NEW GAME ----------------
-    rooms = load_rooms()
+    if room["ended"]:
 
-    if room_code in rooms:
+        if st.button("New Game"):
 
-        if rooms[room_code]["ended"]:
+            assignments, imposter = (
+                assign_words(room["players"])
+            )
 
-            if st.button("New Game"):
+            room["assignments"] = assignments
 
-                players = rooms[room_code]["players"]
+            room["imposter"] = imposter
 
-                assignments, imposter = (
-                    assign_words(players)
-                )
+            room["started"] = True
 
-                rooms[room_code]["assignments"] = (
-                    assignments
-                )
+            room["ended"] = False
 
-                rooms[room_code]["imposter"] = (
-                    imposter
-                )
+            room["votes"] = {}
 
-                rooms[room_code]["started"] = True
+            room["winner"] = ""
 
-                rooms[room_code]["ended"] = False
+            room["last_result"] = ""
 
-                rooms[room_code]["votes"] = {}
+            save_rooms(rooms)
 
-                rooms[room_code]["winner"] = ""
-
-                save_rooms(rooms)
-
-                st.success("New Game Started!")
+            st.success("New Game Started!")
 
     # ---------------- LEAVE ROOM ----------------
     st.divider()
@@ -500,4 +474,4 @@ if st.session_state.joined:
 
         st.session_state.current_room = ""
 
-        st.rerun()
+        st.success("You left the room.")
